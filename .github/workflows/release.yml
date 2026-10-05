@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -18,7 +21,7 @@ jobs:
       - name: Prepare dependencies (Xcode)
         run: |
           ls /Applications/ | grep Xcode || true
-          # Prefer 26.2 if available (less SPM crash prone), fallback to 26.3
+          # Prefer 26.2, then 26.4, then 26.3.
           if [ -d /Applications/Xcode_26.2.app ]; then
             sudo xcode-select -s /Applications/Xcode_26.2.app
           elif [ -d /Applications/Xcode_26.2.0.app ]; then
