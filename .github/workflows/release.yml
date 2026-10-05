@@ -17,21 +17,52 @@ jobs:
 
       - name: Prepare dependencies (Xcode)
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.3.0.app
+          ls /Applications/ | grep Xcode || true
+          # Prefer 26.2 if available (less SPM crash prone), fallback to 26.3
+          if [ -d /Applications/Xcode_26.2.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.2.app
+          elif [ -d /Applications/Xcode_26.2.0.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.2.0.app
+          elif [ -d /Applications/Xcode_26.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.4.app
+          elif [ -d /Applications/Xcode_26.4.0.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.4.0.app
+          else
+            sudo xcode-select -s /Applications/Xcode_26.3.0.app
+          fi
+          xcodebuild -version
 
       - name: Build
-        run: | 
+        run: |
+          defaults write com.apple.dt.Xcode IDEPackageSupportUseBuiltinSCM YES
           agvtool new-version -all $(git rev-parse HEAD)
+          xcodebuild -project Feather.xcodeproj -scheme Feather -resolvePackageDependencies -skipPackagePluginValidation || true
           make
 
       - name: Get Version
         id: get_version
         run: |
-          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" _build/Payload/*.app/Info.plist)
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          set -e
+          PLIST=""
+          for p in _build/Payload/Feather.app/Info.plist _build/Payload/*.app/Info.plist; do
+            if [ -f "$p" ]; then PLIST="$p"; break; fi
+          done
+          VERSION=""
+          if [ -n "$PLIST" ]; then
+            VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || true)
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION=$(grep -E '^FEATHER_PROJECT_VERSION=' Feather.xcconfig | cut -d= -f2 | tr -d '[:space:]')
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "Could not determine version"
+            ls -la _build/Payload/ 2>/dev/null || true
+            exit 1
+          fi
+          echo "VERSION=${VERSION}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
-      - name: Create Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - name: Create Draft Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v3.0.2
         with:
           name: Feather v${{ env.VERSION }}
@@ -42,4 +73,4 @@ jobs:
           fail_on_unmatched_files: true
           draft: true
         env:
-          GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
